@@ -30,6 +30,10 @@ def import_events(client, file):
     # For demonstration purpose action names are taken from input along with secondary actions on
     # For the UR add some item metadata
 
+    timestamp = datetime.datetime.now(pytz.utc)
+    if (len(data) == 4):
+      timestamp = pytz.utc.localize(datetime.datetime.fromtimestamp(long(data[3]) / 1e3))
+
     if (data[1] == "purchase"):
       client.create_event(
         event=data[1],
@@ -37,8 +41,9 @@ def import_events(client, file):
         entity_id=data[0],
         target_entity_type="item",
         target_entity_id=data[2],
+        event_time=timestamp
       )
-      print "Event: " + data[1] + " entity_id: " + data[0] + " target_entity_id: " + data[2]
+      print "Event: " + data[1] + " entity_id: " + data[0] + " target_entity_id: " + data[2] + "event_time: " + timestamp.strftime("%Y-%m-%d %H:%M:%S")
     elif (data[1] == "view"):  # assumes other event type is 'view'
       client.create_event(
         event=data[1],
@@ -46,6 +51,7 @@ def import_events(client, file):
         entity_id=data[0],
         target_entity_type="item",  # type of item in this action
         target_entity_id=data[2],
+        event_time=timestamp
       )
       print "Event: " + data[1] + " entity_id: " + data[0] + " target_entity_id: " + data[2]
     elif (data[1] == "$set"):  # must be a set event

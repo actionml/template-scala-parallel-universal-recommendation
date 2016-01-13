@@ -18,6 +18,7 @@
 package org.template
 
 import _root_.io.prediction.controller.PDataSource
+import _root_.io.prediction.core.CleanedDataSource
 import _root_.io.prediction.controller.EmptyEvaluationInfo
 import _root_.io.prediction.controller.EmptyActualResult
 import _root_.io.prediction.controller.Params
@@ -27,6 +28,7 @@ import org.apache.mahout.math.indexeddataset.{BiDictionary, IndexedDataset}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import grizzled.slf4j.Logger
+import org.joda.time.DateTime
 
 /** Taken from engine.json these are passed in to the DataSource constructor
   *
@@ -41,25 +43,27 @@ case class DataSourceParams(
 
 /** Read specified events from the PEventStore and creates RDDs for each event. A list of pairs (eventName, eventRDD)
   * are sent to the Preparator for further processing.
+  *
   * @param dsp parameters taken from engine.json
   */
 class DataSource(val dsp: DataSourceParams)
   extends PDataSource[TrainingData,
-      EmptyEvaluationInfo, Query, EmptyActualResult] {
+      EmptyEvaluationInfo, Query, EmptyActualResult] with CleanedDataSource {
 
-  @transient lazy val logger = Logger[this.type]
+  override def appName: String = dsp.appName
 
-  /** Reads events from PEventStore and create and RDD for each */
+/** Reads events from PEventStore and create and RDD for each */
   override
   def readTraining(sc: SparkContext): TrainingData = {
 
     val eventNames = dsp.eventNames
 
-    val eventsRDD = PEventStore.find(
-      appName = dsp.appName,
-      entityType = Some("user"),
-      eventNames = Some(eventNames),
-      targetEntityType = Some(Some("item")))(sc)
+    val allEvents = cleanedPEvents(sc)
+
+    val eventsRDD = allEvents.filter{ e =>
+      (e.entityType == "user" && e.targetEntityType == Some("item")) ||
+        e.entityType == "item"
+    }
 
     // now separate the events by event name
     val actionRDDs = eventNames.map { eventName =>
@@ -78,9 +82,9 @@ class DataSource(val dsp: DataSourceParams)
     }
 
     // aggregating all $set/$unsets for metadata fields, which are attached to items
-    val fieldsRDD = PEventStore.aggregateProperties(
-      appName= dsp.appName,
-      entityType=  "item")(sc)
+    val fieldsRDD = eventsRDD.filter { e =>
+      e.entityType == "item"
+    }.map(e => e.entityType -> PropertyMap(e.properties.fields, DateTime.now(), DateTime.now()))
 
     // Have a list of (actionName, RDD), for each action
     // todo: some day allow data to be content, which requires rethinking how to use EventStore
@@ -100,9 +104,9 @@ class TrainingData(
 
   override def toString = {
     val a = actions.map { t =>
-      s"${t._1} actions: [count:${t._2.count()}] + sample:${t._2.take(2).toList} "
+      s"${t._1} actions: [count:${t._2.count()}] + sample:${t._2.take(1).toList} "
     }.toString()
-    val f = s"Item metadata: [count:${fieldsRDD.count}] + sample:${fieldsRDD.take(2).toList} "
+    val f = s"Item metadata: [count:${fieldsRDD.count}] + sample:${fieldsRDD.take(1).toList} "
     a + f
   }
 
