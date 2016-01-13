@@ -6,7 +6,12 @@
     "params" : {
       "name": "sample-handmade-data.txt",
       "appName": "handmade",
-      "eventNames": ["purchase"]
+      "eventNames": ["purchase"],
+      "eventWindow": {
+        "duration": "1 day", // default is to not drop events
+        "removeDuplicates": "true",  // default = false
+        "compressProperties": "true" // default = false
+      }
     }
   },
   "sparkConf": {

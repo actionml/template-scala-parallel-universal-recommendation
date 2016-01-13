@@ -1,5 +1,9 @@
 u1,purchase,Iphone 6
+u1,purchase,Iphone 6,1420070407
+u1,purchase,Iphone 6,1420070407
+u1,purchase,Iphone 6,1420070407
 u1,purchase,Iphone 5
+u1,purchase,Iphone 4
 u1,purchase,Iphone 4
 u1,purchase,Ipad-retina
 U 2,purchase,Nexus
@@ -19,6 +23,9 @@ u-4,view,Tablets
 u-4,view,Soap
 u5,view,Soap
 Iphone 6,$set,categories:Phones:Electronics:Apple
+Iphone 6,$set,categories:Phones:Electronics:App
+Iphone 6,$unset,Electronics:App
+Iphone 6,$set,Electronics:Apple
 Iphone 5,$set,categories:Phones:Electronics:Apple
 Iphone 4,$set,categories:Phones:Electronics:Apple
 Ipad-retina,$set,categories:Tablets:Electronics:Apple
