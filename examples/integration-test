@@ -1,6 +1,8 @@
 sh ./examples/integration-test-setup
+
 echo "Differences between expected and actual results, none is a passing test:"
 diff data/integration-test-expected.txt test.out
 
-echo ""
-echo "Note that the engine is still deployed until killed or this shell exists."
+deploy_pid=`jps -lm | grep "onsole deploy" | cut -f 1 -d ' '`
+echo "Killing the deployed test PredictionServer"
+kill "$deploy_pid"
