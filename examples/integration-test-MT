@@ -1,0 +1,40 @@
+origDir=`eval pwd`
+
+cp -r . ../URmultiTenantTest
+
+sh ./examples/integration-test-setup
+
+curl -H "Content-Type: application/json" -d '
+{
+    "user": "u1"
+}' http://localhost:8000/queries.json > MTtest.out
+
+mv ../URmultiTenantTest/data/sample-handmade-data-MT.txt ../URmultiTenantTest/data/sample-handmade-data.txt
+
+mv ../URmultiTenantTest/examples/handmadeMT-engine.json ../URmultiTenantTest/examples/handmade-engine.json 
+
+cd ../URmultiTenantTest
+
+sh ./examples/integration-test-setup
+
+manifest=`cat manifest.json`
+engineId=${manifest:7:32}
+
+
+curl -H "Content-Type: application/json" -d '
+{
+    "user": "u1"
+}' http://localhost:8000/${engineId}/queries.json > MTtest.out
+
+
+cd $origDir
+
+echo "Differences between results from two different engines (with differing data), none is a failing test:"
+diff ../URmultiTenantTest/MTtest.out MTtest.out
+
+rm -rf ../URmultiTenantTest
+
+echo ""
+deploy_pid=`jps -lm | grep "onsole deploy" | cut -f 1 -d ' '`
+echo "Killing the deployed test PredictionServer"
+kill "$deploy_pid"
