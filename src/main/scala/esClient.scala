@@ -19,6 +19,7 @@ package org.template
 
 import java.util
 
+import com.betaout.{IncludeItem, _}
 import grizzled.slf4j.Logger
 import io.prediction.data.storage.{Storage, StorageClientConfig, elasticsearch}
 import org.apache.hadoop.hbase.protobuf.generated.ClientProtos.GetRequest
@@ -31,7 +32,7 @@ import org.elasticsearch.action.admin.indices.exists.indices.IndicesExistsReques
 import org.elasticsearch.action.admin.indices.refresh.RefreshRequest
 import org.elasticsearch.action.get.GetResponse
 import org.elasticsearch.client.transport.TransportClient
-import org.elasticsearch.common.settings.{Settings, ImmutableSettings}
+import org.elasticsearch.common.settings.{ImmutableSettings, Settings}
 import org.joda.time.DateTime
 import org.json4s.jackson.JsonMethods._
 import org.elasticsearch.spark._
@@ -211,20 +212,46 @@ object EsClient {
     * @param indexName the index to search
     * @return a [PredictedResults] collection
     */
-  def search(query: String, indexName: String): PredictedResult = {
-    val sr = client.prepareSearch(indexName).setSource(query).get()
 
+
+/********** changes in search function to get mustinclude query items in result***********/
+// exlcude products with empty product picture URL
+
+def search(query: String, indexName: String, _query: Query): PredictedResult = {
+  val sr = client.prepareSearch(indexName).setSource(query).get()
+  val ap: URAlgorithmParams = null
+  val URAlgorithmObj = new URAlgorithm(ap)
+  if (_query.includeItems != None) {
+    val queryIncludeItems = URAlgorithmObj.buildIncludeQuery(_query)
+    val sr2 = client.prepareSearch(indexName).setSource(queryIncludeItems).get()
     if (!sr.isTimedOut) {
-      val recs = sr.getHits.getHits.map( hit => new ItemScore(hit.getId, hit.getScore.toDouble) )
+      val recs = sr.getHits.getHits.filter(a => a.sourceAsMap().get("productPictureUrl") == null).map(hit => new ItemScore(hit.getId, hit.getScore.toDouble, hit.sourceAsMap().get("price"), hit.sourceAsMap().get("productPictureUrl"), hit.sourceAsMap().get("productTitle"), hit.sourceAsMap().get("pageUrl")))
+
+      val includeitems = sr2.getHits.getHits.filter(a => a.sourceAsMap().get("productPictureUrl") == null).map(hit => new IncludeItem(hit.getId, hit.getScore.toDouble, hit.sourceAsMap().get("price"), hit.sourceAsMap().get("productPictureUrl"), hit.sourceAsMap().get("productTitle"), hit.sourceAsMap().get("pageUrl")))
+      // return only products whose product picture URL is not null
       logger.info(s"Results: ${sr.getHits.getHits.size} retrieved of " +
         s"a possible ${sr.getHits.totalHits()}")
-      new PredictedResult(recs)
+      if(!sr2.isTimedOut)
+        new PredictedResult(recs, includeitems)
+      else
+        new PredictedResult(recs, Array.empty[IncludeItem])
     } else {
       logger.info(s"No results for query ${parse(query)}")
-      new PredictedResult(Array.empty[ItemScore])
+      new PredictedResult(Array.empty[ItemScore], Array.empty[IncludeItem])
     }
-
   }
+  else {
+    if (!sr.isTimedOut) {
+      val recs = sr.getHits.getHits.filter(a => a.sourceAsMap().get("productPictureUrl") != null).map(hit => new ItemScore(hit.getId, hit.getScore.toDouble, hit.sourceAsMap().get("price"), hit.sourceAsMap().get("productPictureUrl"), hit.sourceAsMap().get("productTitle"), hit.sourceAsMap().get("pageUrl")))
+      logger.info(s"Results: ${sr.getHits.getHits.size} retrieved of " +
+        s"a possible ${sr.getHits.totalHits()}")
+      new PredictedResult(recs, Array.empty[IncludeItem])
+    } else {
+      logger.info(s"No results for query ${parse(query)}")
+      new PredictedResult(Array.empty[ItemScore], Array.empty[IncludeItem])
+    }
+  }
+}
 
   /** Gets the "source" field of an Elasticsearch document
     *
