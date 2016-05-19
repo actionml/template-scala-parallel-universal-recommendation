@@ -88,7 +88,7 @@ case class ItemScore(
                       productPictureUrl: AnyRef,
                       productTitle: AnyRef,
                       pageUrl:AnyRef
-                    ) // used to rank, original score returned from teh search engine
+                    ) //used to rank, original score returned from teh search engine
   extends Serializable
 
 case class IncludeItem(
