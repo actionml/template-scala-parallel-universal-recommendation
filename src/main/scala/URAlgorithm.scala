@@ -377,7 +377,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
     val backfillFieldName = ap.backfillField.getOrElse(BackfillField()).name
     logger.info(s"PopModel using fieldName: ${backfillFieldName}")
     val queryAndBlacklist = buildQuery(ap, query, backfillFieldName.getOrElse(defaultURAlgorithmParams.DefaultBackfillFieldName))
-    val recs = EsClient.search(queryAndBlacklist._1, ap.indexName)
+    val recs = EsClient.search(queryAndBlacklist._1, query.indexName.getOrElse(ap.indexName))
     // should have all blacklisted items excluded
     // todo: need to add dithering, mean, sigma, seed required, make a seed that only changes on some fixed time
     // period so the recs ordering stays fixed for that time period.
@@ -478,6 +478,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
       val json =
         (
           ("size" -> numRecs) ~
+            ("_source"-> ("include" -> "id")) ~
             ("query"->
               ("bool"->
                 ("should"-> should) ~
@@ -548,7 +549,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
     val recentEvents = try {
       LEventStore.findByEntity(
-        appName = ap.appName,
+        appName = query.appName.getOrElse(ap.appName),
         // entityType and entityId is specified for fast lookup
         entityType = "user",
         entityId = query.user.get,

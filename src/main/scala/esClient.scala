@@ -137,7 +137,12 @@ object EsClient {
       }
       mappings += mappingsTail // any other string is not_analyzed
 
-      val cir = new CreateIndexRequest(indexName).mapping(indexType,mappings)
+      val indexSettings = ImmutableSettings.settingsBuilder()
+          .put("index.number_of_shards",3)
+          .put("index.number_of_replicas", 1)
+          .build()
+
+      val cir = new CreateIndexRequest(indexName, indexSettings).mapping(indexType,mappings)
       val create = client.admin().indices().create(cir).actionGet()
       if (!create.isAcknowledged) {
         logger.info(s"Index ${indexName} wasn't created, but may have quietly failed.")
