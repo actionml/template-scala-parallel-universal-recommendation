@@ -28,6 +28,7 @@ import io.prediction.controller.{EngineFactory, Engine}
 
 /** The Query spec with optional values. The only hard rule is that there must be either a user or
   * an item id. All other values are optional. */
+
 case class Query(
     user: Option[String] = None, // must be a user or item id
     userBias: Option[Float] = None, // default: whatever is in algorithm params or 1
@@ -36,12 +37,17 @@ case class Query(
     fields: Option[List[Field]] = None, // default: whatever is in algorithm params or None
     currentDate: Option[String] = None, // if used will override dateRange filter, currentDate must lie between the item's
     // expireDateName value and availableDateName value, all are ISO 8601 dates
-    dateRange: Option[DateRange] = None, // optional before and after filter applied to a date field
-    blacklistItems: Option[List[String]] = None, // default: whatever is in algorithm params or None
+    dateRange: Option[DateRange] = None, // default: whatever is in algorithm params or None
     returnSelf: Option[Boolean] = None,// means for an item query should the item itself be returned, defaults
                                        // to what is in the algorithm params or false
     num: Option[Int] = None, // default: whatever is in algorithm params, which itself has a default--probably 20
-    eventNames: Option[List[String]]) // names used to ID all user actions
+    eventNames: Option[List[String]], // names used to ID all user actions
+    /** following variable defines features - must include particular items, price range, blacklist items,blacklistCategories respectively ***/
+    includeItems: Option[List[String]] = None,
+    priceRange: Option[PriceRange] = None,// optional before and after filter applied to a date field
+    blacklistItems: Option[List[String]] = None,
+    blacklistCategory: Option[List[String]] = None,
+    blacklistBrand: Option[List[String]] = None)
   extends Serializable
 
 /** Used to specify how Fields are represented in engine.json */
@@ -59,15 +65,40 @@ case class DateRange(
     after: Option[String]) // both empty should be ignored
   extends Serializable
 
+
+/********************************************************************************************************/
+// This is for price range filter
+case class PriceRange(
+                       name: String, // name of item property for the date comparison
+                       lessthan: Option[String], // empty strings means no filter
+                       greaterthan: Option[String]) // both empty should be ignored
+  extends Serializable
+/*********************************************************************************************************/
+
 /** results of a MMRAlgoritm.predict */
 case class PredictedResult(
-    itemScores: Array[ItemScore])
+                            itemScores: Array[ItemScore],
+                            includeItems : Array[IncludeItem])
   extends Serializable
 
 case class ItemScore(
-    item: String, // item id
-    score: Double )// used to rank, original score returned from teh search engine
+                      item: String, // item id
+                      score: Double,
+                      price: AnyRef,
+                      productPictureUrl: AnyRef,
+                      productTitle: AnyRef,
+                      pageUrl:AnyRef
+                    ) //used to rank, original score returned from teh search engine
   extends Serializable
+
+case class IncludeItem(
+                        item: String, // item id
+                        score: Double,
+                        price: AnyRef,
+                        productPictureUrl: AnyRef,
+                        productTitle: AnyRef,
+                        pageUrl:AnyRef
+                      ) extends Serializable
 
 object RecommendationEngine extends EngineFactory {
   def apply() = {

@@ -377,13 +377,25 @@ class URAlgorithm(val ap: URAlgorithmParams)
     val backfillFieldName = ap.backfillField.getOrElse(BackfillField()).name
     logger.info(s"PopModel using fieldName: ${backfillFieldName}")
     val queryAndBlacklist = buildQuery(ap, query, backfillFieldName.getOrElse(defaultURAlgorithmParams.DefaultBackfillFieldName))
-    val recs = EsClient.search(queryAndBlacklist._1, ap.indexName)
+    val recs = EsClient.search(queryAndBlacklist._1, ap.indexName, query)
     // should have all blacklisted items excluded
     // todo: need to add dithering, mean, sigma, seed required, make a seed that only changes on some fixed time
     // period so the recs ordering stays fixed for that time period.
     recs
   }
 
+  def buildIncludeQuery (query : Query) : String = {
+    val mustinclude: JValue = render(("ids" -> ("values" -> query.includeItems)))
+    val json =
+      (
+        ("query"->
+          (mustinclude)
+          )
+        )
+    val j = compact(render(json))
+    logger.info(s"Include item query: \n${j}\n")
+    compact(render(json))
+  }
   /** Build a query from default algorithms params and the query itself taking into account defaults */
   def buildQuery(ap: URAlgorithmParams, query: Query, backfillFieldName: String = ""): (String, List[Event]) = {
 
@@ -426,6 +438,8 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
       val allFilteringCorrelators = recentUserHistoryFilter ++ similarItemsFilter ++ filteringMetadata
 
+      val excludeItemsBrandCategory = getExcludedItemsBrandCategory(query)
+
       // since users have action history and items have correlators and both correspond to the same "actions" like
       // purchase or view, we'll pass both to the query if the user history or items correlators are empty
       // then metadata or backfill must be relied on to return results.
@@ -451,15 +465,18 @@ class URAlgorithm(val ap: URAlgorithmParams)
           |""".stripMargin))
 
       val should: List[JValue] = if (shouldFields.isEmpty) popModelSort else shouldFields.get ::: popModelSort
-
+      val filteringDatePriceRange = getFilteringDatePriceRange(query)
 
       val mustFields: List[JValue] = allFilteringCorrelators.map { i =>
         render(("terms" -> (i.actionName -> i.itemIDs) ~ ("boost" -> 0)))}.toList
-      val must: List[JValue] = mustFields ::: filteringDateRange
+      //val must: List[JValue] = mustFields ::: filteringDateRange
 
-      val mustNotFields: JValue = render(("ids" -> ("values" -> getExcludedItems (alluserEvents._2, query)) ~ ("boost" -> 0)))
-      val mustNot: JValue = mustNotFields
+      //val mustNotFields: JValue = render(("ids" -> ("values" -> getExcludedItems (alluserEvents._2, query)) ~ ("boost" -> 0)))      val must: List[JValue] = mustFields :::  filteringDatePriceRange
+      val must: List[JValue] = mustFields :::  filteringDatePriceRange
 
+
+      val mustNot : List[JValue] = excludeItemsBrandCategory
+	
       val popQuery = if (ap.recsModel.getOrElse("all") == "all" ||
         ap.recsModel.getOrElse("all") == "backfill") {
         Some(List(
@@ -706,6 +723,170 @@ class URAlgorithm(val ap: URAlgorithmParams)
       json = json :+ parse(expire)
     } else {
       logger.info("Misconfigured date information, either your engine.json date settings or your query's dateRange is incorrect.\nIngoring date information for this query.")
+    }
+    json
+  }
+
+  //function containing both date range and price filter together
+def getFilteringDatePriceRange( query: Query ): List[JValue] = {
+    var json: List[JValue] = List.empty[JValue]
+    var range = ""
+    // currentDate in the query overrides the dateRange in the same query so ignore daterange if both
+    val currentDate = query.currentDate.getOrElse(DateTime.now().toDateTimeISO.toString)
+
+    if (query.priceRange.nonEmpty && (query.priceRange.get.greaterthan.nonEmpty && query.priceRange.get.lessthan.nonEmpty)) {
+      logger.info(s"inside price Date Range")
+      val name = query.priceRange.get.name
+      val lessthan = query.priceRange.get.lessthan.getOrElse("")
+      val greaterthan = query.priceRange.get.greaterthan.getOrElse("")
+
+      val rangeStart = s"""
+                          |{
+                          |  "constant_score": {
+                          |    "filter": {
+                          |      "range": {
+                          |        "${name}": {
+
+               """.stripMargin
+
+
+      val rangeAfter = s"""
+                          |          "gt": "${greaterthan}"
+          """.stripMargin
+
+
+      val rangeBefore = s"""
+                           |          "lt": "${lessthan}"
+          """.
+        stripMargin
+
+      val rangeEnd = s"""
+                        |        }
+                        |      }
+                        |    },
+                        |    "boost": 0
+                        |  }
+                        |}
+          """.stripMargin
+
+      range += rangeStart
+      if (!greaterthan.isEmpty) {
+        range += rangeAfter
+        if (!lessthan.isEmpty) range += ","
+      }
+      if (!lessthan.isEmpty){
+        range += rangeBefore
+      }
+      range += rangeEnd
+      if (query.dateRange.nonEmpty && (query.dateRange.get.after.nonEmpty || query.dateRange.get.before.nonEmpty))
+        range += ","
+      json = json :+ parse(range)
+    }
+    if (query.dateRange.nonEmpty && (query.dateRange.get.after.nonEmpty || query.dateRange.get.before.nonEmpty)) {
+      logger.info(s"inside Date Range")
+      val name = query.dateRange.get.name
+      val before = query.dateRange.get.before.getOrElse("")
+      val after = query.dateRange.get.after.getOrElse("")
+
+      val rangeStart = s"""
+                          |{
+                          |  "constant_score": {
+                          |    "filter": {
+                          |      "range": {
+                          |        "${name}": {
+          """.stripMargin
+      val rangeAfter = s"""
+                          |          "gt": "${after}"
+          """.stripMargin
+
+      val rangeBefore = s"""
+                           |          "lt": "${before}"
+          """.stripMargin
+      val rangeEnd = s"""
+                        |        }
+                        |      }
+                        |    },
+                        |    "boost": 0
+                        |  }
+                        |}
+          """.stripMargin
+      range += rangeStart
+      if (!after.isEmpty) {
+        range += rangeAfter
+        if (!before.isEmpty) range += ","
+      }
+      if(!before.isEmpty)
+      {
+        range += rangeBefore
+      }
+      range += rangeEnd
+      json = json :+ parse(range)
+    }
+    else if (ap.availableDateName.nonEmpty && ap.expireDateName.nonEmpty) {
+      // use the query date or system date
+      val availableDate = ap.availableDateName.get
+      // never None
+      val expireDate = ap.expireDateName.get
+
+      val available = s"""
+                         |{
+                         |  "constant_score": {
+                         |    "filter": {
+                         |      "range": {
+                         |        "${availableDate} ": {
+                         |          "lte": "${currentDate} "
+                         |        }
+                         |      }
+                         |    },
+                         |    "boost": 0
+                         |  }
+                         |}
+          """.stripMargin
+
+      json = json :+ parse(available)
+      val expire = s"""
+                      |{
+                      |  "constant_score": {
+                      |    "filter": {
+                      |      "range": {
+                      |        "${expireDate}": {
+                      |          "gt": "${currentDate}"
+                      |        }
+                      |      }
+                      |    },
+                      |    "boost": 0
+                      |  }
+                      |}
+          """.stripMargin
+      json = json :+ parse(expire)
+    }
+    else
+    {
+      logger.info("Misconfigured date information, either your engine.json date settings or your query's dateRange is incorrect.\nIngoring date information for this query.")
+    }
+    json
+  }
+
+  def getExcludedItemsBrandCategory(query : Query): List[JValue] = {
+    var json: List[JValue] = List.empty[JValue]
+    val alluserEvents = getBiasedRecentUserActions(query)
+    val excludedItems = getExcludedItems(alluserEvents._2, query)
+    if(query.blacklistCategory.nonEmpty) {
+      val excludeCategory: JValue = render("terms" -> ("categories" -> query.blacklistCategory))  // exlcude items from particular category
+      val excludeBrandString : String = compact(excludeCategory)
+      json = json :+ parse(excludeBrandString)
+    }
+    if(query.blacklistBrand.nonEmpty)
+    {
+      val excludeBrand: JValue = render("terms" -> ("brands" -> query.blacklistBrand)) // exlcude items from particular brand
+      val excludeCategoryString : String = compact(excludeBrand)
+      json = json :+ parse(excludeCategoryString)
+    }
+    if(excludedItems.nonEmpty)
+    {
+      val excludeItems: JValue = render("ids" -> ("values" -> getExcludedItems(alluserEvents._2, query))) // exclude particular item
+      val excludeItemsString : String = compact(excludeItems)
+      json = json :+ parse(excludeItemsString)
     }
     json
   }
