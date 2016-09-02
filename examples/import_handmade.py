@@ -66,7 +66,7 @@ def import_events(client, file):
         event_time=current_date,
         properties={prop_name: prop_value}
       )
-      print "Event: " + data[1] + " entity_id: " + data[0] + " properties/"+prop_name+": " + str(properties) + \
+      print "Event: " + data[1] + " entity_id: " + data[0] + " properties/"+prop_name+": " + str(prop_value) + \
           " current_date: " + current_date.isoformat()
     count += 1
     current_date += event_time_increment

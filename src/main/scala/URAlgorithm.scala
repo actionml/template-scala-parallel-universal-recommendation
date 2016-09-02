@@ -309,7 +309,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
       currentMetadataRDD <- EsClient.getRDD(sc, ap.indexName, ap.typeName)
     } yield popModelRDD.cogroup(currentMetadataRDD)
       .map { case (item, (iterPopRank, iterMap)) =>
-        logger.debug(Utils.hl(s"$item: ${iterPopRank.size}, ${iterMap.size}"))
+
         (iterMap.headOption, iterPopRank.headOption) match {
           case (Some(map), Some(popRank)) => map ++ Map(
             backfillFieldName -> popRank,
