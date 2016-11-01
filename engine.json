@@ -33,6 +33,12 @@
             "name": "view",
             "maxCorrelatorsPerItem": 50
           }
+        ],
+        "excludeFields": [
+	        {
+            "name": "fieldname",
+            "values": ["fieldValue1",...]
+          },...	
         ]
       }
     }
